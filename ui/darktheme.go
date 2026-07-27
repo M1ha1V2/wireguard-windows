@@ -29,6 +29,7 @@ import (
 var (
 	modUxtheme = windows.NewLazySystemDLL("uxtheme.dll")
 	modDwmapi  = windows.NewLazySystemDLL("dwmapi.dll")
+	modUser32  = windows.NewLazySystemDLL("user32.dll")
 
 	// Ordinals are undocumented but have been stable since Windows 10 1809
 	// and are widely relied upon (e.g. by Microsoft's own Windows Terminal
@@ -40,6 +41,10 @@ var (
 	procSetWindowTheme         = modUxtheme.NewProc("SetWindowTheme")
 
 	procDwmSetWindowAttribute = modDwmapi.NewProc("DwmSetWindowAttribute")
+
+	// github.com/lxn/win doesn't reliably expose FindWindowEx across forks,
+	// so we call it ourselves.
+	procFindWindowEx = modUser32.NewProc("FindWindowExW")
 )
 
 const (
@@ -166,10 +171,36 @@ func setControlTheme(hwnd win.HWND, dark bool) {
 	setWindowVisualStyle(hwnd, dark, "DarkMode_Explorer")
 }
 
-// styleListView recolors a native ListView/TableView control directly,
-// since walk doesn't expose its internal theme colors for overriding, and
-// visual styles alone don't touch a ListView's background/text colors.
+// findWindowEx wraps user32!FindWindowExW directly rather than relying on
+// github.com/lxn/win to expose it, since coverage varies across forks.
+func findWindowEx(parent, childAfter win.HWND, className string) win.HWND {
+	name, err := windows.UTF16PtrFromString(className)
+	if err != nil {
+		return 0
+	}
+	r, _, _ := procFindWindowEx.Call(uintptr(parent), uintptr(childAfter), uintptr(unsafe.Pointer(name)), 0)
+	return win.HWND(r)
+}
+
+func forEachChildOfClass(parent win.HWND, className string, fn func(win.HWND)) {
+	var child win.HWND
+	for {
+		child = findWindowEx(parent, child, className)
+		if child == 0 {
+			return
+		}
+		fn(child)
+	}
+}
+
+// styleListView recolors a native ListView control directly, since walk
+// doesn't expose its internal theme colors for overriding, and visual
+// styles alone don't touch a ListView's background/text colors. hwnd must
+// be the actual SysListView32 control, not walk.TableView's own wrapper
+// window (walk.TableView.Handle() returns the latter; see styleTableView).
 func styleListView(hwnd win.HWND, dark bool) {
+	setControlTheme(hwnd, dark)
+
 	var bg, text win.COLORREF
 	if dark {
 		bg = win.COLORREF(colorDarkControlBg)
@@ -185,6 +216,15 @@ func styleListView(hwnd win.HWND, dark bool) {
 	if header := win.HWND(win.SendMessage(hwnd, lvmGetHeader, 0, 0)); header != 0 {
 		setWindowVisualStyle(header, dark, "ItemsView")
 	}
+}
+
+// styleTableView finds the real SysListView32 control(s) backing a
+// walk.TableView (it wraps them in its own container window) and themes
+// those directly.
+func styleTableView(tv *walk.TableView, dark bool) {
+	forEachChildOfClass(tv.Handle(), "SysListView32", func(lv win.HWND) {
+		styleListView(lv, dark)
+	})
 }
 
 // applyDarkMode recursively themes root and all of its descendants to
@@ -264,6 +304,6 @@ func styleWidgetColors(w walk.Window, dark bool) {
 	}
 
 	if tv, ok := w.(*walk.TableView); ok {
-		styleListView(tv.Handle(), dark)
+		styleTableView(tv, dark)
 	}
 }
