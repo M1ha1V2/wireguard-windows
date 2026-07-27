@@ -25,6 +25,7 @@ type SyntaxEdit struct {
 	lastBlockState                  BlockState
 	yheight                         int
 	highlightGuard                  uint32
+	darkMode                        bool
 	textChangedPublisher            walk.EventPublisher
 	privateKeyPublisher             walk.StringEventPublisher
 	blockUntunneledTrafficPublisher walk.IntEventPublisher
@@ -82,6 +83,19 @@ func (se *SyntaxEdit) PrivateKeyChanged() *walk.StringEvent {
 
 func (se *SyntaxEdit) BlockUntunneledTrafficStateChanged() *walk.IntEvent {
 	return se.blockUntunneledTrafficPublisher.Event()
+}
+
+// SetDarkMode tells the editor whether it should paint itself with a dark
+// background. highlightText() derives each token's color from the
+// background it's drawn against (see the bgInversion trick below), so
+// darkMode has to be known explicitly rather than read from the classic
+// GetSysColor(COLOR_WINDOW), which dark mode doesn't touch.
+func (se *SyntaxEdit) SetDarkMode(dark bool) {
+	if se.darkMode == dark {
+		return
+	}
+	se.darkMode = dark
+	se.highlightText()
 }
 
 type spanStyle struct {
@@ -242,7 +256,12 @@ func (se *SyntaxEdit) highlightText() error {
 		format.YHeight = 20 * 10
 	}
 	win.SendMessage(hWnd, win.EM_SETCHARFORMAT, win.SCF_ALL, uintptr(unsafe.Pointer(&format)))
-	bgColor := win.COLORREF(win.GetSysColor(win.COLOR_WINDOW))
+	var bgColor win.COLORREF
+	if se.darkMode {
+		bgColor = win.RGB(0x1E, 0x1E, 0x1E)
+	} else {
+		bgColor = win.COLORREF(win.GetSysColor(win.COLOR_WINDOW))
+	}
 	bgInversion := (bgColor & win.RGB(0xFF, 0xFF, 0xFF)) ^ win.RGB(0xFF, 0xFF, 0xFF)
 	win.SendMessage(hWnd, win.EM_SETBKGNDCOLOR, 0, uintptr(bgColor))
 	numSpans := len(spans)

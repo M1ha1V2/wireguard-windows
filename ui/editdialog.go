@@ -176,6 +176,8 @@ func newEditDialog(owner walk.Form, tunnel *manager.Tunnel) (*EditDialog, error)
 		})
 	}
 
+	applyDarkMode(dlg.Dialog, CurrentDarkMode())
+
 	disposables.Spare()
 
 	return dlg, nil

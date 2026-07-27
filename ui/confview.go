@@ -718,6 +718,7 @@ func (cv *ConfView) setTunnel(tunnel *manager.Tunnel, config *conf.Config, state
 				group.Dispose()
 				continue
 			}
+			applyDarkMode(group, CurrentDarkMode())
 			pv.apply(&peer)
 			cv.peers[peer.PublicKey] = pv
 		}

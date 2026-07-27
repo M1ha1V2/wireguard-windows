@@ -30,6 +30,7 @@ var (
 func RunUI() {
 	runtime.LockOSThread()
 	windows.SetProcessPriorityBoost(windows.CurrentProcess(), false)
+	enableDarkModeSupport()
 	defer func() {
 		if err := recover(); err != nil {
 			showErrorCustom(nil, "Panic", fmt.Sprint(err, "\n\n", string(debug.Stack())))

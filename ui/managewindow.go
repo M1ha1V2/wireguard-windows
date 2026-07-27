@@ -114,6 +114,8 @@ func NewManageTunnelsWindow() (*ManageTunnelsWindow, error) {
 	globalState, _ := manager.IPCClientGlobalState()
 	mtw.onTunnelChange(nil, manager.TunnelUnknown, globalState, nil)
 
+	applyDarkMode(mtw, isSystemDarkModeEnabled())
+
 	systemMenu := win.GetSystemMenu(mtw.Handle(), false)
 	if systemMenu != 0 {
 		win.InsertMenuItem(systemMenu, 0, true, &win.MENUITEMINFO{
@@ -187,6 +189,7 @@ func (mtw *ManageTunnelsWindow) UpdateFound() {
 	if err == nil {
 		mtw.updatePage = updatePage
 		mtw.tabs.Pages().Add(updatePage.TabPage)
+		applyDarkMode(updatePage.TabPage, CurrentDarkMode())
 	}
 }
 
@@ -204,6 +207,12 @@ func (mtw *ManageTunnelsWindow) WndProc(hwnd win.HWND, msg uint32, wParam, lPara
 		if wParam == aboutWireGuardCmd {
 			onAbout(mtw)
 			return 0
+		}
+	case win.WM_SETTINGCHANGE:
+		if lParam != 0 && windows.UTF16PtrToString((*uint16)(unsafe.Pointer(lParam))) == "ImmersiveColorSet" {
+			mtw.Synchronize(func() {
+				applyDarkMode(mtw, isSystemDarkModeEnabled())
+			})
 		}
 	case raiseMsg:
 		if mtw.tunnelsPage == nil || mtw.tabs == nil {
